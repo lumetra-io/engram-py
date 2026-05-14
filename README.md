@@ -57,18 +57,18 @@ EngramClient(
 - `store_memories(contents, bucket="default")` — batched store
 - `list_memories(bucket="default", *, limit=20, offset=0)` — paginated list
 - `delete_memory(memory_id, bucket="default")` — delete one memory
-- `clear_memories(bucket)` — delete every memory in a bucket
+- `clear_memories(bucket)` — delete every memory in a bucket. **No default — explicit bucket required** (prevents accidental wipes).
 
 ### Query
 - `query(question, *, buckets=None, top_k=8, skip_synthesis=False, return_explanation=True)`
-  - `buckets` fuses across multiple buckets in one call
+  - `buckets` fuses across multiple buckets in one call. Defaults to `["default"]`.
   - `skip_synthesis=True` returns retrieval-only — no server-side LLM call
   - response shape: `{"answer", "explanation": {"retrieved_memories", "profile", "graph_facts"}, "usage"}`
 
 ### Buckets
 - `list_buckets()` — all buckets in your tenant
 - `create_bucket(name, description=None)`
-- `delete_bucket(bucket)`
+- `delete_bucket(bucket)` — **No default — explicit bucket required** (prevents accidental wipes).
 
 ### Profile
 - `get_profile(bucket="default")` — the canonical profile prepended to recall

@@ -312,6 +312,35 @@ class ErrorPathTests(unittest.TestCase):
         finally:
             httpd.shutdown()
 
+    def test_connection_failure_raises_engram_error_status_zero(self) -> None:
+        # Point at a port nothing is listening on. urllib raises URLError;
+        # the client should convert that into EngramError(status=0).
+        client = EngramClient(
+            api_key="eng_live_test_key",
+            base_url="http://127.0.0.1:1",  # port 1 is reserved, never bound
+            timeout_seconds=1,
+        )
+        with self.assertRaises(EngramError) as ctx:
+            client.store_memory("x", "b")
+        self.assertEqual(ctx.exception.status, 0)
+        self.assertIsNone(ctx.exception.body)
+
+
+# ---------------------------------------------------------------------------
+# Bucket-management coverage
+# ---------------------------------------------------------------------------
+
+class BucketAdminTests(unittest.TestCase):
+    def test_delete_bucket_sends_delete_to_bucket_path(self) -> None:
+        url, cap, httpd = _serve(204, None)
+        try:
+            _client(url).delete_bucket("scratch")
+            self.assertEqual(cap.method, "DELETE")
+            self.assertEqual(cap.path, "/v1/buckets/scratch")
+            self.assertEqual(cap.headers.get("authorization"), "Bearer eng_live_test_key")
+        finally:
+            httpd.shutdown()
+
 
 if __name__ == "__main__":
     unittest.main()

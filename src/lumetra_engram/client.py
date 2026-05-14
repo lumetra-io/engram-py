@@ -23,6 +23,8 @@ from .types import (
 
 DEFAULT_BASE_URL = "https://api.lumetra.io"
 DEFAULT_TIMEOUT_SECONDS = 30.0
+SDK_VERSION = "0.1.0"
+USER_AGENT = f"engram-python/{SDK_VERSION}"
 
 
 class EngramClient:
@@ -86,6 +88,7 @@ class EngramClient:
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
+                "User-Agent": USER_AGENT,
             },
         )
 

@@ -3,6 +3,20 @@
 These are ``TypedDict`` definitions — they behave identically to ordinary
 ``dict`` at runtime but give IDEs and type checkers (mypy, pyright) the same
 hints the TypeScript client exposes via ``interface``. JSON-serialize freely.
+
+Convention
+----------
+- ``total=True`` (the default) is used for shapes where every documented key is
+  always present in the server response — ``StoreMemoryResult``,
+  ``ListMemoriesResult``, ``ProfileResult``.
+- ``total=False`` is used for shapes where the server may omit keys depending
+  on context — ``Bucket`` (no ``memory_count`` from ``create_bucket``),
+  ``QueryExplanation`` (``profile`` and ``graph_facts`` only when retrieval
+  produced them), and so on.
+
+We deliberately don't reach for ``typing_extensions.Required``/``NotRequired``
+because they'd add a runtime dependency for what is a typing-only nuance, and
+the package's headline feature is zero runtime deps.
 """
 
 from __future__ import annotations
