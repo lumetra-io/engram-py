@@ -15,6 +15,7 @@ from .client import DEFAULT_BASE_URL, DEFAULT_TIMEOUT_SECONDS, EngramClient
 from .errors import EngramError
 from .types import (
     Bucket,
+    ClearMemoriesResult,
     JSON,
     ListMemoriesResult,
     Memory,
@@ -26,7 +27,7 @@ from .types import (
     StoreMemoryResult,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "EngramClient",
@@ -34,6 +35,7 @@ __all__ = [
     "Bucket",
     "Memory",
     "StoreMemoryResult",
+    "ClearMemoriesResult",
     "RetrievedMemory",
     "QueryExplanation",
     "QueryUsage",

@@ -15,6 +15,7 @@ from urllib.parse import quote, urlencode
 from .errors import EngramError
 from .types import (
     Bucket,
+    ClearMemoriesResult,
     ListMemoriesResult,
     ProfileResult,
     QueryResult,
@@ -23,7 +24,7 @@ from .types import (
 
 DEFAULT_BASE_URL = "https://api.lumetra.io"
 DEFAULT_TIMEOUT_SECONDS = 30.0
-SDK_VERSION = "0.1.0"
+SDK_VERSION = "0.1.1"
 USER_AGENT = f"engram-python/{SDK_VERSION}"
 
 
@@ -156,12 +157,17 @@ class EngramClient:
             method="DELETE",
         )
 
-    def clear_memories(self, bucket: str) -> None:
-        """Delete every memory in a bucket. Destructive."""
-        self._request(
+    def clear_memories(self, bucket: str) -> ClearMemoriesResult:
+        """Delete every memory in a bucket. Destructive.
+
+        Returns the count of memories actually deleted under
+        ``cleared_count`` (server reports it in the response).
+        """
+        result = self._request(
             f"/v1/buckets/{quote(bucket, safe='')}/memories",
             method="DELETE",
         )
+        return result or {"success": True, "cleared_count": 0}
 
     # ---------- query ----------
 

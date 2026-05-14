@@ -71,6 +71,11 @@ class QueryResult(TypedDict, total=False):
     usage: QueryUsage
 
 
+class ClearMemoriesResult(TypedDict):
+    success: bool
+    cleared_count: int
+
+
 class ListMemoriesResult(TypedDict):
     memories: List[Memory]
     total: int
