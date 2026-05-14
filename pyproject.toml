@@ -12,7 +12,7 @@ requires-python = ">=3.9"
 authors = [{ name = "Lumetra", email = "hi@lumetra.io" }]
 keywords = ["engram", "lumetra", "memory", "ai", "agents", "llm", "mcp", "rag"]
 classifiers = [
-  "Development Status :: 4 - Beta",
+  "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",

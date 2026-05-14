@@ -99,11 +99,11 @@ class EngramClient:
             parsed = _parse_body(raw)
             raise EngramError(
                 _format_error_message(status, parsed), status=status, body=parsed
-            ) from None
+            ) from exc
         except urllib_error.URLError as exc:
             raise EngramError(
                 f"Engram API request failed: {exc.reason}", status=0, body=None
-            ) from None
+            ) from exc
 
         parsed = _parse_body(raw)
         if status >= 400:
