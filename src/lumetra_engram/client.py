@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 from typing import Any, Dict, Iterator, List, Optional, Union
+import time
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import quote, urlencode
@@ -25,6 +26,11 @@ from .types import (
 
 DEFAULT_BASE_URL = "https://api.lumetra.io"
 DEFAULT_TIMEOUT_SECONDS = 30.0
+DEFAULT_MAX_RETRIES_ON_429 = 3
+# Cap on how long we'll sleep between retries even if the server's
+# Retry-After header asks for more — protects callers from a server
+# accidentally telling them to wait 10 minutes.
+_RETRY_AFTER_CAP_SECONDS = 30.0
 SDK_VERSION = "0.2.0"
 USER_AGENT = f"engram-python/{SDK_VERSION}"
 
@@ -49,6 +55,7 @@ class EngramClient:
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+        max_retries_on_429: int = DEFAULT_MAX_RETRIES_ON_429,
     ) -> None:
         key = api_key or os.environ.get("ENGRAM_API_KEY")
         if not key:
@@ -61,6 +68,7 @@ class EngramClient:
         self._api_key = key
         self._base_url = resolved_base.rstrip("/")
         self._timeout = timeout_seconds
+        self._max_retries_on_429 = max(0, max_retries_on_429)
 
     # ---------- transport ----------
 
@@ -94,21 +102,36 @@ class EngramClient:
             },
         )
 
-        try:
-            with urllib_request.urlopen(req, timeout=self._timeout) as resp:
-                status = resp.status
-                raw = resp.read()
-        except urllib_error.HTTPError as exc:
-            raw = exc.read()
-            status = exc.code
-            parsed = _parse_body(raw)
-            raise EngramError(
-                _format_error_message(status, parsed), status=status, body=parsed
-            ) from exc
-        except urllib_error.URLError as exc:
-            raise EngramError(
-                f"Engram API request failed: {exc.reason}", status=0, body=None
-            ) from exc
+        # 429-aware retry loop. The Engram API enforces a per-tenant
+        # concurrent-request cap and sets Retry-After on 429s; bursty
+        # clients without retry handling otherwise blow up under load
+        # (see customer feedback: a 32-worker run died because the
+        # client retried 5xx but not 429). max_retries_on_429=0 disables.
+        attempts_remaining = self._max_retries_on_429
+        backoff = 1.0
+        while True:
+            try:
+                with urllib_request.urlopen(req, timeout=self._timeout) as resp:
+                    status = resp.status
+                    raw = resp.read()
+                break
+            except urllib_error.HTTPError as exc:
+                if exc.code == 429 and attempts_remaining > 0:
+                    delay = _parse_retry_after(exc.headers.get("Retry-After"), backoff)
+                    time.sleep(delay)
+                    attempts_remaining -= 1
+                    backoff = min(backoff * 2.0, _RETRY_AFTER_CAP_SECONDS)
+                    continue
+                raw = exc.read()
+                status = exc.code
+                parsed = _parse_body(raw)
+                raise EngramError(
+                    _format_error_message(status, parsed), status=status, body=parsed
+                ) from exc
+            except urllib_error.URLError as exc:
+                raise EngramError(
+                    f"Engram API request failed: {exc.reason}", status=0, body=None
+                ) from exc
 
         parsed = _parse_body(raw)
         if status >= 400:
@@ -259,21 +282,34 @@ class EngramClient:
             },
         )
 
-        try:
-            response = urllib_request.urlopen(req, timeout=self._timeout)
-        except urllib_error.HTTPError as exc:
-            # Match the buffered path's error surface so callers get a
-            # consistent EngramError on auth/quota failures.
-            body_bytes = exc.read() if hasattr(exc, "read") else b""
+        # 429-aware retry: same policy as the buffered path. Once the
+        # response body starts flowing we can't safely resume, so retry
+        # only at the connection-open stage.
+        attempts_remaining = self._max_retries_on_429
+        backoff = 1.0
+        while True:
             try:
-                payload = json.loads(body_bytes.decode("utf-8")) if body_bytes else None
-            except Exception:
-                payload = None
-            raise EngramError(
-                f"HTTP {exc.code}: {payload.get('error') if isinstance(payload, dict) else body_bytes.decode('utf-8', 'replace')}",
-                status_code=exc.code,
-                response_body=payload if payload is not None else body_bytes.decode("utf-8", "replace"),
-            ) from exc
+                response = urllib_request.urlopen(req, timeout=self._timeout)
+                break
+            except urllib_error.HTTPError as exc:
+                if exc.code == 429 and attempts_remaining > 0:
+                    delay = _parse_retry_after(exc.headers.get("Retry-After"), backoff)
+                    time.sleep(delay)
+                    attempts_remaining -= 1
+                    backoff = min(backoff * 2.0, _RETRY_AFTER_CAP_SECONDS)
+                    continue
+                # Match the buffered path's error surface so callers get
+                # a consistent EngramError on auth/quota failures.
+                body_bytes = exc.read() if hasattr(exc, "read") else b""
+                try:
+                    payload = json.loads(body_bytes.decode("utf-8")) if body_bytes else None
+                except Exception:
+                    payload = None
+                raise EngramError(
+                    f"HTTP {exc.code}: {payload.get('error') if isinstance(payload, dict) else body_bytes.decode('utf-8', 'replace')}",
+                    status_code=exc.code,
+                    response_body=payload if payload is not None else body_bytes.decode("utf-8", "replace"),
+                ) from exc
 
         try:
             for raw_line in response:
@@ -340,6 +376,23 @@ class EngramClient:
             f"/v1/buckets/{quote(bucket, safe='')}/profile/regenerate",
             method="POST",
         )
+
+
+def _parse_retry_after(header: Optional[str], default_backoff: float) -> float:
+    """Resolve a Retry-After header to a sleep duration in seconds.
+
+    Honors the integer-seconds form (the only form the Engram API
+    currently emits). Caps at _RETRY_AFTER_CAP_SECONDS so a misconfigured
+    server can't force callers to sleep for minutes. Falls back to the
+    caller-supplied exponential backoff when the header is missing or
+    unparseable."""
+    if header:
+        try:
+            value = float(header.strip())
+            return max(0.0, min(value, _RETRY_AFTER_CAP_SECONDS))
+        except (TypeError, ValueError):
+            pass
+    return min(default_backoff, _RETRY_AFTER_CAP_SECONDS)
 
 
 def _parse_body(raw: bytes) -> Any:
