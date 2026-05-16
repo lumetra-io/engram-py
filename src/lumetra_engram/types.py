@@ -71,6 +71,23 @@ class QueryResult(TypedDict, total=False):
     usage: QueryUsage
 
 
+class QueryStreamEvent(TypedDict, total=False):
+    """One frame yielded by :meth:`EngramClient.query_stream`.
+
+    Two shapes share the same dict:
+      - ``{"type": "delta", "content": str}`` for incremental synthesis output.
+      - ``{"type": "done", "usage": QueryUsage, "synthesis_usage": dict,
+        "explanation": QueryExplanation}`` for the final frame.
+
+    ``type`` discriminates between them.
+    """
+    type: str
+    content: str
+    usage: QueryUsage
+    synthesis_usage: Any
+    explanation: QueryExplanation
+
+
 class ClearMemoriesResult(TypedDict):
     success: bool
     cleared_count: int

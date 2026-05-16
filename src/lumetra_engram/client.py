@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Iterator, List, Optional, Union
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import quote, urlencode
@@ -19,12 +19,13 @@ from .types import (
     ListMemoriesResult,
     ProfileResult,
     QueryResult,
+    QueryStreamEvent,
     StoreMemoryResult,
 )
 
 DEFAULT_BASE_URL = "https://api.lumetra.io"
 DEFAULT_TIMEOUT_SECONDS = 30.0
-SDK_VERSION = "0.1.1"
+SDK_VERSION = "0.2.0"
 USER_AGENT = f"engram-python/{SDK_VERSION}"
 
 
@@ -205,6 +206,105 @@ class EngramClient:
                 },
             },
         )
+
+    def query_stream(
+        self,
+        question: str,
+        *,
+        buckets: Optional[List[str]] = None,
+        top_k: int = 8,
+        skip_synthesis: bool = False,
+        return_explanation: bool = True,
+    ) -> Iterator[QueryStreamEvent]:
+        """Streaming variant of :meth:`query`.
+
+        Yields event dicts as the server produces them:
+
+            for event in engram.query_stream("..."):
+                if event["type"] == "delta":
+                    print(event["content"], end="", flush=True)
+                elif event["type"] == "done":
+                    print()
+                    print(f"Used {event['usage']['output_tokens']} tokens")
+
+        Events have one of two shapes::
+
+            {"type": "delta", "content": str}
+            {"type": "done",  "usage": {...}, "synthesis_usage": {...},
+             "explanation": {...} | absent}
+
+        The connection stays open for the lifetime of the iterator. Break
+        out of the loop early to close it.
+        """
+        body = {
+            "query": question,
+            "buckets": buckets if buckets is not None else ["default"],
+            "stream": True,
+            "options": {
+                "top_k": top_k,
+                "return_explanation": return_explanation,
+                "skip_synthesis": skip_synthesis,
+            },
+        }
+        url = f"{self._base_url}/v1/query"
+        req = urllib_request.Request(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream",
+                "User-Agent": USER_AGENT,
+            },
+        )
+
+        try:
+            response = urllib_request.urlopen(req, timeout=self._timeout)
+        except urllib_error.HTTPError as exc:
+            # Match the buffered path's error surface so callers get a
+            # consistent EngramError on auth/quota failures.
+            body_bytes = exc.read() if hasattr(exc, "read") else b""
+            try:
+                payload = json.loads(body_bytes.decode("utf-8")) if body_bytes else None
+            except Exception:
+                payload = None
+            raise EngramError(
+                f"HTTP {exc.code}: {payload.get('error') if isinstance(payload, dict) else body_bytes.decode('utf-8', 'replace')}",
+                status_code=exc.code,
+                response_body=payload if payload is not None else body_bytes.decode("utf-8", "replace"),
+            ) from exc
+
+        try:
+            for raw_line in response:
+                line = raw_line.decode("utf-8").rstrip("\r\n")
+                if not line.startswith("data: "):
+                    continue
+                payload_str = line[6:]
+                if payload_str == "[DONE]":
+                    return
+                try:
+                    payload = json.loads(payload_str)
+                except json.JSONDecodeError:
+                    # Malformed frame — skip rather than crash the stream.
+                    continue
+                if isinstance(payload, dict) and payload.get("error"):
+                    raise EngramError(str(payload["error"]))
+                # OpenAI-style delta chunk
+                choices = payload.get("choices") if isinstance(payload, dict) else None
+                if choices:
+                    delta = (choices[0] or {}).get("delta", {}).get("content")
+                    if delta:
+                        yield {"type": "delta", "content": delta}
+                    continue
+                # Final usage/explanation frame
+                if isinstance(payload, dict):
+                    yield {"type": "done", **payload}
+        finally:
+            try:
+                response.close()
+            except Exception:
+                pass
 
     # ---------- buckets ----------
 

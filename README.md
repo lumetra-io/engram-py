@@ -64,6 +64,30 @@ EngramClient(
   - `buckets` fuses across multiple buckets in one call. Defaults to `["default"]`.
   - `skip_synthesis=True` returns retrieval-only — no server-side LLM call
   - response shape: `{"answer", "explanation": {"retrieved_memories", "profile", "graph_facts"}, "usage"}`
+- `query_stream(question, *, buckets=None, top_k=8, skip_synthesis=False, return_explanation=True)` — same args, streams the answer as it's generated
+
+## Streaming
+
+For broad questions, synthesis can take 10–25 seconds. `query_stream` yields the answer incrementally so you can render it as it's produced instead of waiting for the full response:
+
+```python
+from lumetra_engram import EngramClient
+
+engram = EngramClient()
+
+for event in engram.query_stream("Summarize what I worked on this week", buckets=["work"]):
+    if event["type"] == "delta":
+        print(event["content"], end="", flush=True)
+    elif event["type"] == "done":
+        print()
+        print(f"\nUsed {event['usage']['output_tokens']} tokens")
+```
+
+Two frame types:
+- `{"type": "delta", "content": str}` — incremental synthesis output, in order. Zero or more.
+- `{"type": "done", "answer": str, "usage": {...}, "synthesis_usage": {...}, "explanation": {...}}` — emitted exactly once at the end with the assembled answer and final usage/explanation.
+
+Break out of the loop early to abort the request and close the connection.
 
 ### Buckets
 - `list_buckets()` — all buckets in your tenant
