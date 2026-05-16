@@ -27,6 +27,10 @@ from typing import Any, List, Optional, TypedDict
 class Bucket(TypedDict, total=False):
     id: str
     name: str
+    # ``bucket_name`` mirrors ``name``; the server emits both so callers
+    # iterating both list_buckets and store_memory responses can use one
+    # field name across the board. Prefer ``name`` in new code.
+    bucket_name: str
     description: Optional[str]
     created_at: str
     memory_count: int
@@ -40,8 +44,11 @@ class Memory(TypedDict, total=False):
     token_count: int
 
 
-class StoreMemoryResult(TypedDict):
+class StoreMemoryResult(TypedDict, total=False):
     id: str
+    # ``memory_id`` is an alias for ``id`` (older API docs / older SDKs
+    # referenced this name). Always present; prefer ``id`` in new code.
+    memory_id: str
     bucket_name: str
     token_count: int
 
@@ -67,6 +74,10 @@ class QueryUsage(TypedDict, total=False):
 
 class QueryResult(TypedDict, total=False):
     answer: str
+    # Top-level count of retrieved memories. Equivalent to
+    # ``len(result["explanation"]["retrieved_memories"])`` but present
+    # even when ``return_explanation`` is False.
+    memories_found: int
     explanation: QueryExplanation
     usage: QueryUsage
 

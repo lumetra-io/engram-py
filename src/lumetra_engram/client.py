@@ -37,7 +37,7 @@ DEFAULT_MAX_RETRIES_ON_429 = 3
 # Retry-After header asks for more — protects callers from a server
 # accidentally telling them to wait 10 minutes.
 _RETRY_AFTER_CAP_SECONDS = 30.0
-SDK_VERSION = "0.2.1"
+SDK_VERSION = "0.2.2"
 USER_AGENT = f"engram-python/{SDK_VERSION}"
 
 
