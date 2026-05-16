@@ -26,12 +26,18 @@ from .types import (
 
 DEFAULT_BASE_URL = "https://api.lumetra.io"
 DEFAULT_TIMEOUT_SECONDS = 30.0
+# Streaming responses can sit in the prep phase (retrieval + extractor
+# pass + count canonicalization) for 5-15s before the first synthesis
+# token lands. The 30s default applied to query_stream() would leave no
+# headroom for the actual streamed body, so we bump it for the stream
+# path only.
+DEFAULT_STREAM_TIMEOUT_SECONDS = 300.0
 DEFAULT_MAX_RETRIES_ON_429 = 3
 # Cap on how long we'll sleep between retries even if the server's
 # Retry-After header asks for more — protects callers from a server
 # accidentally telling them to wait 10 minutes.
 _RETRY_AFTER_CAP_SECONDS = 30.0
-SDK_VERSION = "0.2.0"
+SDK_VERSION = "0.2.1"
 USER_AGENT = f"engram-python/{SDK_VERSION}"
 
 
@@ -55,6 +61,7 @@ class EngramClient:
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+        stream_timeout_seconds: float = DEFAULT_STREAM_TIMEOUT_SECONDS,
         max_retries_on_429: int = DEFAULT_MAX_RETRIES_ON_429,
     ) -> None:
         key = api_key or os.environ.get("ENGRAM_API_KEY")
@@ -68,6 +75,7 @@ class EngramClient:
         self._api_key = key
         self._base_url = resolved_base.rstrip("/")
         self._timeout = timeout_seconds
+        self._stream_timeout = stream_timeout_seconds
         self._max_retries_on_429 = max(0, max_retries_on_429)
 
     # ---------- transport ----------
@@ -289,7 +297,7 @@ class EngramClient:
         backoff = 1.0
         while True:
             try:
-                response = urllib_request.urlopen(req, timeout=self._timeout)
+                response = urllib_request.urlopen(req, timeout=self._stream_timeout)
                 break
             except urllib_error.HTTPError as exc:
                 if exc.code == 429 and attempts_remaining > 0:
