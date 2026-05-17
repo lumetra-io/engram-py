@@ -37,7 +37,7 @@ DEFAULT_MAX_RETRIES_ON_429 = 3
 # Retry-After header asks for more — protects callers from a server
 # accidentally telling them to wait 10 minutes.
 _RETRY_AFTER_CAP_SECONDS = 30.0
-SDK_VERSION = "0.3.0"
+SDK_VERSION = "0.4.0"
 USER_AGENT = f"engram-python/{SDK_VERSION}"
 
 
@@ -235,30 +235,66 @@ class EngramClient:
         top_k: int = 8,
         skip_synthesis: bool = False,
         return_explanation: bool = True,
+        max_tokens: Optional[int] = None,
+        min_similarity_threshold: Optional[float] = None,
+        top_k_per_bucket: Optional[Union[int, Dict[str, int]]] = None,
+        return_format: Optional[str] = None,
+        response_schema: Optional[Dict[str, Any]] = None,
     ) -> QueryResult:
         """Hybrid retrieval + optional server-side synthesis.
 
         Args:
             question: Natural-language query.
             buckets: One or more buckets to fuse across. Defaults to ``["default"]``.
-            top_k: Maximum memories to retrieve. Defaults to 8.
-            skip_synthesis: If True, server returns retrieval-only — ``answer``
-                will be empty. Use this if you're composing the answer yourself
-                with your own model.
-            return_explanation: Include the ``explanation`` payload (retrieved
-                memories, profile, graph facts). Defaults to True.
+            top_k: Maximum memories to retrieve (default 8). Used as
+                the per-bucket cap when ``top_k_per_bucket`` isn't set.
+            skip_synthesis: If True, server returns retrieval-only —
+                ``answer`` will be empty. Use this if you're composing
+                the answer yourself with your own model.
+            return_explanation: Include the ``explanation`` payload
+                (retrieved memories, profile, graph facts). Defaults
+                to True.
+            max_tokens: Cap synthesis output. Default is the server's
+                (currently 8192). Lower for agent loops / cost control.
+            min_similarity_threshold: Drop retrieved chunks below this
+                raw cosine similarity. Acts as a floor over the server's
+                adaptive threshold — useful for citations-grade output
+                where only positive matches should be returned.
+            top_k_per_bucket: ``int`` (same K for every bucket) or
+                ``dict`` (``{bucket_name: int}`` with per-bucket K).
+                Lets you say "20 from edgar_AAPL, 4 from prices_AAPL"
+                instead of fighting our defaults. When omitted, falls
+                back to ``top_k`` for every bucket.
+            return_format: ``"prose"`` (default) or ``"json"``. When
+                ``"json"``, server asks the synthesizer for JSON and
+                returns the parsed result under ``result["answer_json"]``.
+            response_schema: Optional JSON Schema dict describing the
+                desired output shape. Included in the prompt to guide
+                the model. Best-effort — validate client-side if you
+                need strict enforcement.
         """
+        options: Dict[str, Any] = {
+            "top_k": top_k,
+            "return_explanation": return_explanation,
+            "skip_synthesis": skip_synthesis,
+        }
+        if max_tokens is not None:
+            options["max_tokens"] = max_tokens
+        if min_similarity_threshold is not None:
+            options["min_similarity_threshold"] = min_similarity_threshold
+        if top_k_per_bucket is not None:
+            options["top_k_per_bucket"] = top_k_per_bucket
+        if return_format is not None:
+            options["return_format"] = return_format
+        if response_schema is not None:
+            options["response_schema"] = response_schema
         return self._request(
             "/v1/query",
             method="POST",
             body={
                 "query": question,
                 "buckets": buckets if buckets is not None else ["default"],
-                "options": {
-                    "top_k": top_k,
-                    "return_explanation": return_explanation,
-                    "skip_synthesis": skip_synthesis,
-                },
+                "options": options,
             },
         )
 
@@ -270,8 +306,13 @@ class EngramClient:
         top_k: int = 8,
         skip_synthesis: bool = False,
         return_explanation: bool = True,
+        max_tokens: Optional[int] = None,
+        min_similarity_threshold: Optional[float] = None,
+        top_k_per_bucket: Optional[Union[int, Dict[str, int]]] = None,
+        return_format: Optional[str] = None,
+        response_schema: Optional[Dict[str, Any]] = None,
     ) -> Iterator[QueryStreamEvent]:
-        """Streaming variant of :meth:`query`.
+        """Streaming variant of :meth:`query`. See :meth:`query` for arg semantics.
 
         Yields event dicts as the server produces them:
 
@@ -286,20 +327,32 @@ class EngramClient:
 
             {"type": "delta", "content": str}
             {"type": "done",  "usage": {...}, "synthesis_usage": {...},
-             "explanation": {...} | absent}
+             "explanation": {...} | absent,
+             "answer_json": Any | absent}    # when return_format=="json"
 
         The connection stays open for the lifetime of the iterator. Break
         out of the loop early to close it.
         """
+        options: Dict[str, Any] = {
+            "top_k": top_k,
+            "return_explanation": return_explanation,
+            "skip_synthesis": skip_synthesis,
+        }
+        if max_tokens is not None:
+            options["max_tokens"] = max_tokens
+        if min_similarity_threshold is not None:
+            options["min_similarity_threshold"] = min_similarity_threshold
+        if top_k_per_bucket is not None:
+            options["top_k_per_bucket"] = top_k_per_bucket
+        if return_format is not None:
+            options["return_format"] = return_format
+        if response_schema is not None:
+            options["response_schema"] = response_schema
         body = {
             "query": question,
             "buckets": buckets if buckets is not None else ["default"],
             "stream": True,
-            "options": {
-                "top_k": top_k,
-                "return_explanation": return_explanation,
-                "skip_synthesis": skip_synthesis,
-            },
+            "options": options,
         }
         url = f"{self._base_url}/v1/query"
         req = urllib_request.Request(

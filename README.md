@@ -64,6 +64,40 @@ The Engram API enforces a per-tenant concurrent-request cap and returns `429 Too
 - `delete_memory(memory_id, bucket="default")` — delete one memory
 - `clear_memories(bucket)` — delete every memory in a bucket. **No default — explicit bucket required** (prevents accidental wipes).
 
+### Query knobs
+
+`query` and `query_stream` accept these tuning knobs (all optional):
+
+| Kwarg | Type | What it does |
+|---|---|---|
+| `max_tokens` | `int` | Cap synthesis output. Lower for agent loops / cost control. |
+| `min_similarity_threshold` | `float` | Drop retrieved chunks below this raw cosine similarity. Citations-grade precision. |
+| `top_k_per_bucket` | `int \| dict` | Per-bucket retrieval depth. `{"edgar_AAPL": 20, "prices_AAPL": 4}` lets you express "deep here, shallow there." |
+| `return_format` | `"prose" \| "json"` | When `"json"`, server returns JSON; result includes parsed `answer_json`. |
+| `response_schema` | `dict` (JSON Schema) | Hint the model with a target shape. Best-effort; validate client-side for strict. |
+
+Example — agent loop with terse, structured output over an asymmetric bucket set:
+
+```python
+r = engram.query(
+    "Apple's active legal proceedings",
+    buckets=["edgar_AAPL", "patents_AAPL"],
+    top_k_per_bucket={"edgar_AAPL": 20, "patents_AAPL": 5},
+    max_tokens=400,
+    return_format="json",
+    response_schema={
+        "type": "array",
+        "items": {"properties": {
+            "case_name": {"type": "string"},
+            "jurisdiction": {"type": "string"},
+            "status": {"type": "string"},
+        }},
+    },
+)
+for case in r["answer_json"] or []:
+    print(case)
+```
+
 ### Query
 - `query(question, *, buckets=None, top_k=8, skip_synthesis=False, return_explanation=True)`
   - `buckets` fuses across multiple buckets in one call. Defaults to `["default"]`.

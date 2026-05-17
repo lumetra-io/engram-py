@@ -89,6 +89,11 @@ class QueryUsage(TypedDict, total=False):
 
 class QueryResult(TypedDict, total=False):
     answer: str
+    # Parsed JSON when the request set ``return_format="json"``. The
+    # parsed value (dict, list, scalar) on success; ``None`` when the
+    # model returned malformed JSON. Always absent for default
+    # ``return_format="prose"`` queries.
+    answer_json: Any
     # Top-level count of retrieved memories. Equivalent to
     # ``len(result["explanation"]["retrieved_memories"])`` but present
     # even when ``return_explanation`` is False.
