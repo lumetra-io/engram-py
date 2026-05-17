@@ -51,6 +51,21 @@ class StoreMemoryResult(TypedDict, total=False):
     memory_id: str
     bucket_name: str
     token_count: int
+    # ``"stored"`` for fresh writes; ``"merged"`` when the server collapsed
+    # this write into a pre-existing memory via dedup. Always present.
+    status: str
+    # Present only when ``status == "merged"``. ID of the canonical
+    # memory the write was absorbed into.
+    deduped_into: str
+    # Present only when ``status == "merged"``. Similarity score in
+    # [0.0, 1.0] (1.0 for content-hash matches).
+    similarity_score: float
+    # Present only when ``status == "merged"``. One of:
+    #   "content_hash" — byte-identical content already stored
+    #   "embedding_similarity" — vector similarity ≥ dedup threshold
+    #   "conflict_keep_existing" — LLM conflict resolver chose the existing
+    #   "concurrent_insert_race" — another worker stored identical content
+    merge_reason: str
 
 
 class RetrievedMemory(TypedDict, total=False):

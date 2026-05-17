@@ -37,7 +37,7 @@ DEFAULT_MAX_RETRIES_ON_429 = 3
 # Retry-After header asks for more — protects callers from a server
 # accidentally telling them to wait 10 minutes.
 _RETRY_AFTER_CAP_SECONDS = 30.0
-SDK_VERSION = "0.2.2"
+SDK_VERSION = "0.3.0"
 USER_AGENT = f"engram-python/{SDK_VERSION}"
 
 
@@ -150,12 +150,36 @@ class EngramClient:
 
     # ---------- memories ----------
 
-    def store_memory(self, content: str, bucket: str = "default") -> StoreMemoryResult:
-        """Store a single memory. Returns the stored row's id, bucket, token count."""
+    def store_memory(
+        self,
+        content: str,
+        bucket: str = "default",
+        *,
+        dedup: Optional[str] = None,
+    ) -> StoreMemoryResult:
+        """Store a single memory. Returns the stored row's id, bucket, token count.
+
+        Args:
+            content: The fact / chunk to store.
+            bucket: Bucket name. Defaults to ``"default"``.
+            dedup: Optional dedup policy. One of ``"off"``, ``"loose"``,
+                ``"strict"``. When ``None`` (the default), the server's
+                policy applies (currently ``"loose"`` = similarity ≥ 0.95
+                collapses). Pass ``"off"`` for templated time-series
+                ingest where similar-but-distinct rows would otherwise
+                merge silently. Pass ``"strict"`` to only merge near-
+                identical content (≥ 0.99). The response includes a
+                ``status`` field — ``"merged"`` indicates the write was
+                absorbed into an existing memory; check ``deduped_into``
+                / ``similarity_score`` / ``merge_reason`` for details.
+        """
+        body: Dict[str, Any] = {"content": content}
+        if dedup is not None:
+            body["dedup"] = dedup
         return self._request(
             f"/v1/buckets/{quote(bucket, safe='')}/memories",
             method="POST",
-            body={"content": content},
+            body=body,
         )
 
     def store_memories(

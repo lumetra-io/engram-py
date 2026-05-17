@@ -58,7 +58,7 @@ The Engram API enforces a per-tenant concurrent-request cap and returns `429 Too
 ## API surface
 
 ### Memories
-- `store_memory(content, bucket="default")` — store a single fact
+- `store_memory(content, bucket="default", *, dedup=None)` — store a single fact. `dedup` is one of `"off"`, `"loose"`, `"strict"`; `None` (default) uses the server's policy. See [Dedup](#dedup) below.
 - `store_memories(contents, bucket="default")` — batched store
 - `list_memories(bucket="default", *, limit=20, offset=0)` — paginated list
 - `delete_memory(memory_id, bucket="default")` — delete one memory
@@ -70,6 +70,35 @@ The Engram API enforces a per-tenant concurrent-request cap and returns `429 Too
   - `skip_synthesis=True` returns retrieval-only — no server-side LLM call
   - response shape: `{"answer", "explanation": {"retrieved_memories", "profile", "graph_facts"}, "usage"}`
 - `query_stream(question, *, buckets=None, top_k=8, skip_synthesis=False, return_explanation=True)` — same args, streams the answer as it's generated
+
+## Dedup
+
+The server runs a similarity check before storing. By default (`"loose"`, similarity ≥ 0.95) it collapses near-duplicate writes into the existing memory so re-ingesting the same source doesn't bloat the bucket. For most narrative content this is what you want.
+
+For templated time-series content (financial filings, daily metrics, log rows) where rows are structurally similar but each carries unique values, the default collapses real data. Use `dedup="off"` to disable.
+
+Every response now includes a `status` field. When `status == "merged"`, the write was absorbed into an existing memory and three extra fields are present:
+
+```python
+r = engram.store_memory("Acme Q1 revenue: $245M", bucket="finance")
+if r["status"] == "merged":
+    print(f"merged into {r['deduped_into']} ({r['merge_reason']}, sim={r['similarity_score']:.3f})")
+```
+
+`merge_reason` is one of:
+- `content_hash` — byte-identical content
+- `embedding_similarity` — vector similarity ≥ threshold
+- `conflict_keep_existing` — LLM conflict resolver chose the existing memory
+- `concurrent_insert_race` — another worker stored identical content first
+
+Opt out for time-series ingest:
+
+```python
+for row in monthly_prices:
+    r = engram.store_memory(row, bucket="prices_AAPL", dedup="off")
+```
+
+`"strict"` is a middle ground — only collapses near-identical content (≥ 0.99). Useful when you want a safety net against exact re-ingest but expect distinct-but-similar rows to coexist.
 
 ## Streaming
 
