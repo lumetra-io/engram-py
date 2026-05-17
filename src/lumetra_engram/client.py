@@ -37,7 +37,7 @@ DEFAULT_MAX_RETRIES_ON_429 = 3
 # Retry-After header asks for more — protects callers from a server
 # accidentally telling them to wait 10 minutes.
 _RETRY_AFTER_CAP_SECONDS = 30.0
-SDK_VERSION = "0.4.0"
+SDK_VERSION = "0.4.1"
 USER_AGENT = f"engram-python/{SDK_VERSION}"
 
 
@@ -237,6 +237,7 @@ class EngramClient:
         return_explanation: bool = True,
         max_tokens: Optional[int] = None,
         min_similarity_threshold: Optional[float] = None,
+        min_weighted_score: Optional[float] = None,
         top_k_per_bucket: Optional[Union[int, Dict[str, int]]] = None,
         return_format: Optional[str] = None,
         response_schema: Optional[Dict[str, Any]] = None,
@@ -256,10 +257,17 @@ class EngramClient:
                 to True.
             max_tokens: Cap synthesis output. Default is the server's
                 (currently 8192). Lower for agent loops / cost control.
-            min_similarity_threshold: Drop retrieved chunks below this
-                raw cosine similarity. Acts as a floor over the server's
-                adaptive threshold — useful for citations-grade output
-                where only positive matches should be returned.
+            min_similarity_threshold: Drop retrieved chunks whose
+                **raw cosine similarity** (the underlying embedding
+                score) is below this. Acts as a floor over the server's
+                adaptive threshold. Useful when you specifically want
+                a precision floor on the embedding signal.
+            min_weighted_score: Drop retrieved chunks whose
+                **weighted_score** (the post-RRF score surfaced in
+                ``explanation.retrieved_memories``) is below this. This
+                is the score you see in responses — most callers want
+                this rather than ``min_similarity_threshold`` because
+                the scales match.
             top_k_per_bucket: ``int`` (same K for every bucket) or
                 ``dict`` (``{bucket_name: int}`` with per-bucket K).
                 Lets you say "20 from edgar_AAPL, 4 from prices_AAPL"
@@ -282,6 +290,8 @@ class EngramClient:
             options["max_tokens"] = max_tokens
         if min_similarity_threshold is not None:
             options["min_similarity_threshold"] = min_similarity_threshold
+        if min_weighted_score is not None:
+            options["min_weighted_score"] = min_weighted_score
         if top_k_per_bucket is not None:
             options["top_k_per_bucket"] = top_k_per_bucket
         if return_format is not None:
@@ -308,6 +318,7 @@ class EngramClient:
         return_explanation: bool = True,
         max_tokens: Optional[int] = None,
         min_similarity_threshold: Optional[float] = None,
+        min_weighted_score: Optional[float] = None,
         top_k_per_bucket: Optional[Union[int, Dict[str, int]]] = None,
         return_format: Optional[str] = None,
         response_schema: Optional[Dict[str, Any]] = None,
@@ -342,6 +353,8 @@ class EngramClient:
             options["max_tokens"] = max_tokens
         if min_similarity_threshold is not None:
             options["min_similarity_threshold"] = min_similarity_threshold
+        if min_weighted_score is not None:
+            options["min_weighted_score"] = min_weighted_score
         if top_k_per_bucket is not None:
             options["top_k_per_bucket"] = top_k_per_bucket
         if return_format is not None:
