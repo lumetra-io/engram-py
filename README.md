@@ -53,6 +53,10 @@ EngramClient(
 
 The Engram API enforces a per-tenant concurrent-request cap and returns `429 Too Many Requests` with a `Retry-After` header when you exceed it. The client honors that header automatically (up to `max_retries_on_429` attempts, capped at 30s per sleep) so bursty workloads don't fail on the first contention spike. Pass `max_retries_on_429=0` to opt out and surface 429 as `EngramError` immediately.
 
+### Thread safety
+
+`EngramClient` is effectively stateless — every call opens its own `urllib` request and the client doesn't share mutable state across calls. You can reuse one client across threads, or instantiate per-request; both are safe.
+
 > **BYOK reminder.** Engram is bring-your-own-key end-to-end. Configure an OpenAI / Anthropic / Groq / Together / Fireworks key on the [Lumetra portal](https://lumetra.io/models) before your first call, or `store_memory` / `query` will raise `EngramError` with `status == 412`.
 
 ## API surface
