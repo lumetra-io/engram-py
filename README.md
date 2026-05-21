@@ -106,7 +106,7 @@ for case in r["answer_json"] or []:
 - `query(question, *, buckets=None, top_k=8, skip_synthesis=False, return_explanation=True)`
   - `buckets` fuses across multiple buckets in one call. Defaults to `["default"]`.
   - `skip_synthesis=True` returns retrieval-only — no server-side LLM call
-  - response shape: `{"answer", "explanation": {"retrieved_memories", "profile", "graph_facts"}, "usage"}`
+  - response shape: `{"answer", "memories_found", "explanation": {"retrieved_memories", "graph_facts", "entity_matches", "context_tokens", "profile"}, "usage"}`. Each `graph_facts[i]` includes `memory_id` so you can match it against `retrieved_memories[].memory_id` and render the citing memory.
 - `query_stream(question, *, buckets=None, top_k=8, skip_synthesis=False, return_explanation=True)` — same args, streams the answer as it's generated
 
 ## Dedup

@@ -21,7 +21,7 @@ the package's headline feature is zero runtime deps.
 
 from __future__ import annotations
 
-from typing import Any, List, Optional, TypedDict
+from typing import Any, Dict, List, Optional, TypedDict
 
 
 class Bucket(TypedDict, total=False):
@@ -69,16 +69,52 @@ class StoreMemoryResult(TypedDict, total=False):
 
 
 class RetrievedMemory(TypedDict, total=False):
-    id: str
+    memory_id: str
+    bucket_id: str
+    bucket_name: str
     content: str
+    # Raw semantic-search similarity score, in [0, 1].
+    raw_score: float
+    # Per-bucket weight applied during fusion.
+    weight: float
+    # ``raw_score * weight``, used for ranking.
+    weighted_score: float
+    metadata: Dict[str, Any]
+
+
+class GraphFact(TypedDict, total=False):
+    """One fact from the knowledge graph, returned alongside retrieved memories.
+
+    ``memory_id`` cross-references ``RetrievedMemory.memory_id`` so callers can
+    render "answer cited from memory X". May be absent for edges that predate
+    the per-edge memory_id plumbing.
+    """
+    subject: str
+    predicate: str
+    object: str
+    memory_id: str
+    bucket_id: str
+    bucket_name: str
+    # Hop distance from the seed entity. 0 = direct fact, 1+ = transitive.
+    depth: int
+    weight: float
+    # ISO-8601 timestamp from the source memory, for temporal supersession.
+    timestamp: Optional[str]
+
+
+class EntityMatch(TypedDict, total=False):
+    entity: str
+    bucket_name: str
     score: float
-    bucket: str
 
 
 class QueryExplanation(TypedDict, total=False):
     retrieved_memories: List[RetrievedMemory]
+    graph_facts: List[GraphFact]
+    entity_matches: List[EntityMatch]
+    # Token count of the retrieval context fed to the synthesis pass.
+    context_tokens: int
     profile: Optional[str]
-    graph_facts: List[str]
 
 
 class QueryUsage(TypedDict, total=False):

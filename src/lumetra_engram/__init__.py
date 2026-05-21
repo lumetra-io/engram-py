@@ -16,6 +16,8 @@ from .errors import EngramError
 from .types import (
     Bucket,
     ClearMemoriesResult,
+    EntityMatch,
+    GraphFact,
     JSON,
     ListMemoriesResult,
     Memory,
@@ -28,7 +30,7 @@ from .types import (
     StoreMemoryResult,
 )
 
-__version__ = "0.4.1"
+__version__ = "0.5.0"
 
 __all__ = [
     "EngramClient",
@@ -38,6 +40,8 @@ __all__ = [
     "StoreMemoryResult",
     "ClearMemoriesResult",
     "RetrievedMemory",
+    "GraphFact",
+    "EntityMatch",
     "QueryExplanation",
     "QueryUsage",
     "QueryResult",
