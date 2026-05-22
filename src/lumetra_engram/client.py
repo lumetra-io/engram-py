@@ -405,8 +405,8 @@ class EngramClient:
                     payload = None
                 raise EngramError(
                     f"HTTP {exc.code}: {payload.get('error') if isinstance(payload, dict) else body_bytes.decode('utf-8', 'replace')}",
-                    status_code=exc.code,
-                    response_body=payload if payload is not None else body_bytes.decode("utf-8", "replace"),
+                    status=exc.code,
+                    body=payload if payload is not None else body_bytes.decode("utf-8", "replace"),
                 ) from exc
 
         try:
@@ -423,7 +423,7 @@ class EngramClient:
                     # Malformed frame — skip rather than crash the stream.
                     continue
                 if isinstance(payload, dict) and payload.get("error"):
-                    raise EngramError(str(payload["error"]))
+                    raise EngramError(str(payload["error"]), status=0, body=payload)
                 # OpenAI-style delta chunk
                 choices = payload.get("choices") if isinstance(payload, dict) else None
                 if choices:
@@ -469,7 +469,14 @@ class EngramClient:
         )
 
     def regenerate_profile(self, bucket: str = "default") -> ProfileResult:
-        """Rebuild the profile from current memories. Synchronous; can take seconds."""
+        """Queue a profile-tick on the bucket's installed Bucket Profiler agent.
+
+        Returns the latest profile snapshot (which may still be the previous
+        one if the new tick is still running). Raises :class:`EngramError`
+        with status 412 (``BUCKET_PROFILER_NOT_INSTALLED``) when the bucket
+        has no profiler agent installed yet — call
+        :meth:`ensure_profiler_agent` first.
+        """
         return self._request(
             f"/v1/buckets/{quote(bucket, safe='')}/profile/regenerate",
             method="POST",

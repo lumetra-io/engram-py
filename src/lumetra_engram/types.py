@@ -114,7 +114,11 @@ class QueryExplanation(TypedDict, total=False):
     entity_matches: List[EntityMatch]
     # Token count of the retrieval context fed to the synthesis pass.
     context_tokens: int
+    # Legacy single-bucket profile, kept for backward compatibility.
     profile: Optional[str]
+    # Multi-bucket profile snapshots, keyed by bucket name. Present when the
+    # query spanned more than one bucket and each had an installed profiler.
+    profiles: Optional[Dict[str, Optional[str]]]
 
 
 class QueryUsage(TypedDict, total=False):
@@ -167,8 +171,22 @@ class ListMemoriesResult(TypedDict):
     offset: int
 
 
-class ProfileResult(TypedDict):
+class ProfileResult(TypedDict, total=False):
+    # Canonical profile text prepended to recall. ``None`` when the profiler
+    # has not yet produced a snapshot.
     profile: Optional[str]
+    # UUID of the bucket this profile belongs to.
+    bucket_id: str
+    # One of ``"ready"``, ``"pending"``, or ``"not_installed"``. Indicates
+    # whether the bucket has a profiler agent installed and whether it has
+    # produced a snapshot yet.
+    status: str
+    # ISO-8601 timestamp of the most recent profile snapshot.
+    updated_at: str
+    # Number of memories present at the time the profile was generated.
+    n_memories_at_gen: int
+    # Identifier of the agent/source that produced the snapshot.
+    source: str
 
 
 # Re-exported for callers who want a single ``Any``-ish dict alias.
